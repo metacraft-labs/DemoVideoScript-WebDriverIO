@@ -1,0 +1,45 @@
+# dvs6 mutation results — 2026-10-28 17:46:25 +0200
+# kill command: bash -c just lint-types lint-input-rule && just build test-arm && just test-conformance test-protocol
+
+KILLED   W1       24.6s  a locator resolving the first of several candidates instead of reporting ambiguity
+           | cp ../dvs-core/conformance/app/web/index.html $BUILD_DIR/web/index.html
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | error: Recipe `test-arm` failed on line 48 with exit code 1
+KILLED   W2      235.6s  a click's modifiers dropped
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../dvs-core/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../dvs-wd/src/main.ts --
+           | error: Recipe `test-conformance` failed on line 41 with exit code 1
+KILLED   W3       21.8s  a stale read: the page is not re-read
+           | cp ../dvs-core/conformance/app/web/index.html $BUILD_DIR/web/index.html
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | error: Recipe `test-arm` failed on line 48 with exit code 1
+KILLED   W4        1.2s  the protocol types drifting from the schema
+           | node scripts/gen-protocol-types.ts ../dvs-core/schemas/v1/backend-protocol.schema.json --check
+           | src/protocol.ts is stale: run scripts/gen-protocol-types.ts
+           | error: Recipe `lint-types` failed on line 55 with exit code 1
+KILLED   W5        1.8s  script injection on the send path
+           | node scripts/check-input-rule.ts
+           | script injection or an element shortcut on the send path: line 277: await this.browser().execute(() => 0);
+           | error: Recipe `lint-input-rule` failed on line 58 with exit code 1
+KILLED   W6       30.3s  settled after one quiet window: before the page stopped changing
+           | cp ../dvs-core/conformance/app/web/index.html $BUILD_DIR/web/index.html
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | error: Recipe `test-arm` failed on line 48 with exit code 1
+KILLED   W7      182.9s  a held modifier never pressed
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../dvs-core/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../dvs-wd/src/main.ts --
+           | error: Recipe `test-conformance` failed on line 41 with exit code 1
+KILLED   W8      161.4s  a held modifier released at once by WebDriverIO's automatic release
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../dvs-core/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../dvs-wd/src/main.ts --
+           | error: Recipe `test-conformance` failed on line 41 with exit code 1
+KILLED   W9      495.0s  a double click delivered as one click
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../dvs-core/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../dvs-wd/src/main.ts --
+           | error: Recipe `test-conformance` failed on line 41 with exit code 1
+KILLED   W10     338.5s  a held modifier pressed and released on different input sources
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../dvs-core node --test tests/*.test.ts
+           | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../dvs-core/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../dvs-wd/src/main.ts --
+           | error: Recipe `test-conformance` failed on line 41 with exit code 1
+
+10/10 killed, 0 survived

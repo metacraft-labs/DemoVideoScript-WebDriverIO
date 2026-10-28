@@ -1,0 +1,17 @@
+{
+  "name": "demo-video-script-webdriverio",
+  "version": "0.1.0",
+  "description": "The DemoVideoScript scenario arm for web pages and WebDriver targets, through WebDriverIO",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "webdriverio": "9.32.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1"
+  }
+}
