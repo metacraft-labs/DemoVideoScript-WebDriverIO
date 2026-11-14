@@ -7,6 +7,7 @@
 // `launch` (a Launch) to start a browser other than the default: headless
 // Chromium (DVS_CHROME) through ChromeDriver (DVS_CHROMEDRIVER), driven over
 // classic W3C WebDriver.
+import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -98,10 +99,32 @@ rl.on("line", (line) => {
 rl.on("close", () => {
   queue.then(() => arm.close()).then(() => process.exit(0));
 });
+// What the arm started does not outlive it. WebDriverIO starts ChromeDriver
+// as a DETACHED child, and a binding may start more (an editor, a server):
+// ending the WebDriver session does not always stop them (a session that
+// could not be ended, a driver whose browser hangs), and a detached child
+// whose parent exits is reparented and keeps running, with its browser, for
+// as long as nobody notices. So every child of the arm, with its own
+// children, is killed when the arm exits, however it exits.
+function processTree(pid: number): number[] {
+  const r = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" });
+  const kids = (r.stdout ?? "").split("\n").filter((x) => x.trim()).map((x) => parseInt(x, 10));
+  return kids.flatMap((k) => [...processTree(k), k]);
+}
+process.on("exit", () => {
+  for (const pid of processTree(process.pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+});
 // A stopped arm ends its WebDriver session: an orphaned browser would hold
 // the runner's pipes open.
-for (const sig of ["SIGTERM", "SIGINT"] as const) {
+for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
   process.on(sig, () => {
-    arm.close().finally(() => process.exit(sig === "SIGTERM" ? 143 : 130));
+    arm.close().finally(() =>
+      process.exit(sig === "SIGTERM" ? 143 : sig === "SIGHUP" ? 129 : 130));
   });
 }
