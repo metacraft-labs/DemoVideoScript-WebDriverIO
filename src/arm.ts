@@ -612,6 +612,15 @@ export class Arm {
               "pad=ceil(iw/2)*2:ceil(ih/2)*2",
               "-c:v",
               "libvpx-vp9",
+              // libvpx's default (good, cpu-used 0) spends seconds a frame:
+              // an hour of a run's screenshots outlasted the runner's call
+              // and no video was left. Realtime is fast enough to keep up.
+              "-deadline",
+              "realtime",
+              "-cpu-used",
+              "8",
+              "-row-mt",
+              "1",
               "-b:v",
               "1M",
               "-pix_fmt",
