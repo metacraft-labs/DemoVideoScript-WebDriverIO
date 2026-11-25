@@ -594,7 +594,11 @@ export class Arm {
             `file '${join(rec.frames, `${String(rec.times.length - 1).padStart(6, "0")}.png`)}'`,
           );
           writeFileSync(join(rec.frames, "list.txt"), list.join("\n") + "\n");
-          const out = join(rec.dir, "session.webm");
+          // Lossless (H.264 RGB, qp 0, in Matroska): the recording is the
+          // source of a video, not the video, so the composition's one final
+          // encode is the only lossy one (DemoVideoScript-pm
+          // spec/Codec-Study.md). RGB needs no even size: nothing is padded.
+          const out = join(rec.dir, "session.mkv");
           const ff = spawnSync(
             process.env.FFMPEG_BIN ?? "ffmpeg",
             [
@@ -608,23 +612,16 @@ export class Arm {
               "0",
               "-i",
               join(rec.frames, "list.txt"),
-              "-vf",
-              "pad=ceil(iw/2)*2:ceil(ih/2)*2",
               "-c:v",
-              "libvpx-vp9",
-              // libvpx's default (good, cpu-used 0) spends seconds a frame:
-              // an hour of a run's screenshots outlasted the runner's call
-              // and no video was left. Realtime is fast enough to keep up.
-              "-deadline",
-              "realtime",
-              "-cpu-used",
-              "8",
-              "-row-mt",
-              "1",
-              "-b:v",
-              "1M",
+              "libx264rgb",
+              "-qp",
+              "0",
+              // the fastest preset: an hour of a run's screenshots must be
+              // encoded before the runner's call ends
+              "-preset",
+              "ultrafast",
               "-pix_fmt",
-              "yuv420p",
+              "rgb24",
               "-r",
               "10",
               out,

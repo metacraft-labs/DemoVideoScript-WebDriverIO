@@ -47,13 +47,21 @@ test(
         dir,
       ]);
       assert.equal(r.status, 0, r.stdout + r.stderr);
-      const video = join(dir, "session.webm");
+      const video = join(dir, "session.mkv");
       assert.ok(statSync(video).size > 2_000, "the video has frames");
-      // a WebM file starts with the EBML magic
+      // a Matroska file starts with the EBML magic
       assert.deepEqual(
         [...readFileSync(video).subarray(0, 4)],
         [0x1a, 0x45, 0xdf, 0xa3],
       );
+      // lossless RGB: the screenshots as they were, for the one final encode
+      const probe = spawnSync(
+        (process.env.FFMPEG_BIN ?? "ffmpeg").replace(/ffmpeg$/, "ffprobe"),
+        ["-v", "error", "-select_streams", "v:0", "-show_entries",
+          "stream=codec_name,pix_fmt", "-of", "csv=p=0", video],
+        { encoding: "utf8" },
+      );
+      assert.equal(probe.stdout.trim(), "h264,gbrp");
       const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
       assert.equal(m.outcome, "passed");
       assert.deepEqual(m.media, [video]);
