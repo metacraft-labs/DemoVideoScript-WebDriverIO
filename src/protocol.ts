@@ -42,7 +42,7 @@ export type ResponseHello = {
   "backend": string;
   "version"?: string;
   "platform"?: "linux" | "macos" | "windows";
-  "capabilities": Array<"input.key" | "input.chord" | "input.text" | "input.pointer.move" | "input.pointer.click" | "input.pointer.drag" | "input.wheel" | "input.hover" | "observe.text" | "observe.geometry" | "observe.style" | "observe.image" | "observe.focus" | "sync.event" | "sync.visual-settle" | "record.cast" | "record.video" | "record.still">;
+  "capabilities": Array<"input.key" | "input.chord" | "input.text" | "input.pointer.move" | "input.pointer.click" | "input.pointer.drag" | "input.wheel" | "input.hover" | "observe.text" | "observe.geometry" | "observe.style" | "observe.image" | "observe.focus" | "sync.event" | "sync.visual-settle" | "record.cast" | "record.video" | "record.still" | "record.mask" | "client.multi" | "client.reload" | "client.duplicate" | "client.isolation.separate" | "client.isolation.shared" | "act">;
   "bindings"?: {
     [key: string]: unknown;
   } | null;
@@ -105,6 +105,10 @@ export type Request = {
   "use": string;
   "with": {
     "$base"?: string;
+    "$timeoutMs"?: number;
+    "$env"?: {
+      [key: string]: string;
+    };
   };
 } | {
   "id": number;
@@ -144,11 +148,29 @@ export type Request = {
   "instance"?: string;
   "step"?: number;
   "kind"?: string;
+  "virtualMs"?: number;
+  "deterministic"?: boolean;
+  "mask"?: Array<string>;
 } | {
   "id": number;
   "call": "hit";
   "x": number;
   "y": number;
+} | {
+  "id": number;
+  "call": "act";
+  "use": string;
+  "with"?: {
+    [key: string]: unknown;
+  };
+} | {
+  "id": number;
+  "call": "client";
+  "op": "adopt" | "open" | "select" | "reload" | "duplicate" | "close";
+  "name": string;
+  "open"?: string;
+  "isolation"?: "separate" | "shared";
+  "from"?: string;
 } | {
   "id": number;
   "call": "shutdown";
