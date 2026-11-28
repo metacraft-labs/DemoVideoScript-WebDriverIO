@@ -1,45 +1,49 @@
-# dvs6 mutation results — 2026-11-28 04:55:50 +0200
+# dvs6 mutation results — 2026-11-28 14:32:44 +0200
 # kill command: bash -c just lint-types lint-input-rule && just build test-arm && just test-conformance test-protocol
 
-KILLED   W1      116.6s  a locator resolving the first of several candidates instead of reporting ambiguity
+KILLED   W1       76.1s  a locator resolving the first of several candidates instead of reporting ambiguity
            | cp ../DemoVideoScript/conformance/app/web/index.html $BUILD_DIR/web/index.html
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | error: Recipe `test-arm` failed on line 48 with exit code 1
-KILLED   W2      588.4s  a click's modifiers dropped
+KILLED   W2      478.0s  a click's modifiers dropped
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../DemoVideoScript/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../DemoVideoScrip
            | error: Recipe `test-conformance` failed on line 41 with exit code 1
-KILLED   W3       43.2s  a stale read: the page is not re-read
+KILLED   W3       65.0s  a stale read: the page is not re-read
            | cp ../DemoVideoScript/conformance/app/web/index.html $BUILD_DIR/web/index.html
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | error: Recipe `test-arm` failed on line 48 with exit code 1
-KILLED   W4        4.7s  the protocol types drifting from the schema
+KILLED   W4        3.0s  the protocol types drifting from the schema
            | node scripts/gen-protocol-types.ts ../DemoVideoScript/schemas/v1/backend-protocol.schema.json --check
            | src/protocol.ts is stale: run scripts/gen-protocol-types.ts
            | error: Recipe `lint-types` failed on line 55 with exit code 1
-KILLED   W5        8.6s  script injection on the send path
+KILLED   W5        3.2s  script injection on the send path
            | node scripts/check-input-rule.ts
-           | script injection or an element shortcut on the send path: line 269: await this.browser().execute(() => 0);
+           | script injection or an element shortcut on the send path: line 272: await this.browser().execute(() => 0);
            | error: Recipe `lint-input-rule` failed on line 58 with exit code 1
-KILLED   W6       72.0s  settled after one quiet window: before the page stopped changing
+KILLED   W6       49.4s  settled after one quiet window: before the page stopped changing
            | cp ../DemoVideoScript/conformance/app/web/index.html $BUILD_DIR/web/index.html
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | error: Recipe `test-arm` failed on line 48 with exit code 1
-KILLED   W7      855.6s  a held modifier never pressed
+KILLED   W7      376.5s  a held modifier never pressed
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../DemoVideoScript/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../DemoVideoScrip
            | error: Recipe `test-conformance` failed on line 41 with exit code 1
-KILLED   W8     1062.0s  a held modifier released at once by WebDriverIO's automatic release
+KILLED   W8      352.2s  a held modifier released at once by WebDriverIO's automatic release
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../DemoVideoScript/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../DemoVideoScrip
            | error: Recipe `test-conformance` failed on line 41 with exit code 1
-KILLED   W9      585.4s  a double click delivered as one click
+KILLED   W9      344.3s  a double click delivered as one click
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../DemoVideoScript/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../DemoVideoScrip
            | error: Recipe `test-conformance` failed on line 41 with exit code 1
-KILLED   W10     375.5s  a held modifier pressed and released on different input sources
+KILLED   W10     786.1s  a held modifier pressed and released on different input sources
            | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
            | DVS_NOTES_WEB=$BUILD_DIR/web $BUILD_DIR/bin/dvs conformance --pack ../DemoVideoScript/conformance/pack/notes-app.pack.yaml --backend "cmd:node ../DemoVideoScrip
            | error: Recipe `test-conformance` failed on line 41 with exit code 1
+KILLED   W11      66.6s  a page still redrawing at the settle timeout reported as not progressing
+           | cp ../DemoVideoScript/conformance/app/web/index.html $BUILD_DIR/web/index.html
+           | DVS_NOTES_WEB=$BUILD_DIR/web DVS_BIN=$BUILD_DIR/bin/dvs DVS_ROOT=../DemoVideoScript node --test tests/*.test.ts
+           | error: Recipe `test-arm` failed on line 48 with exit code 1
 
-10/10 killed, 0 survived
+11/11 killed, 0 survived

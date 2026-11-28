@@ -41,6 +41,8 @@ ARMS = [
     Arm("W10", A, 'const k = this.browser().action("key", { id: "keyboard" });\n        if (isPress) {',
         'const k = this.browser().action("key", { id: `keyboard-${Date.now()}` });\n        if (isPress) {',
         "a held modifier pressed and released on different input sources"),
+    Arm("W11", A, "      this.lastChange > 0 && Date.now() - this.lastChange < PROGRESS_WINDOW_MS\n",
+        "      false\n", "a page still redrawing at the settle timeout reported as not progressing"),
 ]
 
 if __name__ == "__main__":

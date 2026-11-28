@@ -58,8 +58,17 @@ test(
       // lossless RGB: the screenshots as they were, for the one final encode
       const probe = spawnSync(
         (process.env.FFMPEG_BIN ?? "ffmpeg").replace(/ffmpeg$/, "ffprobe"),
-        ["-v", "error", "-select_streams", "v:0", "-show_entries",
-          "stream=codec_name,pix_fmt", "-of", "csv=p=0", video],
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-show_entries",
+          "stream=codec_name,pix_fmt",
+          "-of",
+          "csv=p=0",
+          video,
+        ],
         { encoding: "utf8" },
       );
       assert.equal(probe.stdout.trim(), "h264,gbrp");
@@ -240,8 +249,15 @@ test(
   { timeout: 300_000 },
   async () => {
     const dir = mkdtempSync(join(tmpdir(), "dvs-wd-stream-"));
-    const p = spawn("node", [join(root, "src/main.ts"), "--binding", join(root, "conformance/notes-binding.ts")],
-      { stdio: ["pipe", "pipe", "inherit"] });
+    const p = spawn(
+      "node",
+      [
+        join(root, "src/main.ts"),
+        "--binding",
+        join(root, "conformance/notes-binding.ts"),
+      ],
+      { stdio: ["pipe", "pipe", "inherit"] },
+    );
     const replies = new Map<number, (r: any) => void>();
     createInterface({ input: p.stdout! }).on("line", (l) => {
       const r = JSON.parse(l);
@@ -251,27 +267,46 @@ test(
     const call = (req: Record<string, unknown>): Promise<any> =>
       new Promise((resolve, reject) => {
         const n = ++id;
-        replies.set(n, (r) => (r.ok ? resolve(r) : reject(new Error(JSON.stringify(r.error)))));
+        replies.set(n, (r) =>
+          r.ok ? resolve(r) : reject(new Error(JSON.stringify(r.error))),
+        );
         p.stdin!.write(JSON.stringify({ ...req, id: n }) + "\n");
       });
     try {
       await call({ call: "hello" });
-      await call({ call: "stage", use: "seed-notes",
-        with: { fixture: join(dvsRoot, "conformance/fixtures/three-notes.json") } });
+      await call({
+        call: "stage",
+        use: "seed-notes",
+        with: {
+          fixture: join(dvsRoot, "conformance/fixtures/three-notes.json"),
+        },
+      });
       await call({ call: "stage", use: "launch-app", with: {} });
       await call({ call: "record", op: "start", dir });
       const started = Date.now();
       await new Promise((r) => setTimeout(r, 8_000));
       // the frames so far are in the file already
       const video = join(dir, "session.mkv");
-      assert.ok(existsSync(video) && statSync(video).size > 1_000, "nothing encoded while recording");
+      assert.ok(
+        existsSync(video) && statSync(video).size > 1_000,
+        "nothing encoded while recording",
+      );
       const stopping = Date.now();
       const stop = await call({ call: "record", op: "stop", dir });
       assert.deepEqual(stop.files, [video]);
       const probe = spawnSync(
         (process.env.FFMPEG_BIN ?? "ffmpeg").replace(/ffmpeg$/, "ffprobe"),
-        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,pix_fmt:format=duration",
-          "-of", "csv=p=0", video],
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-show_entries",
+          "stream=codec_name,pix_fmt:format=duration",
+          "-of",
+          "csv=p=0",
+          video,
+        ],
         { encoding: "utf8" },
       );
       const [stream, duration] = probe.stdout.trim().split("\n");
@@ -279,11 +314,64 @@ test(
       // as long as the recording, give or take its first screenshot and a frame
       const ms = Number(duration) * 1000;
       const wall = stopping - started;
-      assert.ok(ms >= wall - 1_000 && ms <= wall + 1_000, `the video is ${ms} ms, the recording ${wall} ms`);
+      assert.ok(
+        ms >= wall - 1_000 && ms <= wall + 1_000,
+        `the video is ${ms} ms, the recording ${wall} ms`,
+      );
       await call({ call: "shutdown" });
     } finally {
       p.kill();
       rmSync(dir, { recursive: true, force: true });
     }
+  },
+);
+
+// A page that keeps redrawing for 7 s after a key, longer than the settle
+// timeout after an input: the arm reports it still changing (progress), so
+// the runner waits on and the step passes. Without the report the settle
+// fails at its timeout ("did not settle").
+test(
+  "a page still redrawing past the settle timeout is waited for, not failed",
+  { timeout: 300_000 },
+  () => {
+    const slowArm = `cmd:node ${join(root, "src/main.ts")} --binding ${join(root, "tests/support/slow-binding.ts")}`;
+    const r = run([
+      "run",
+      join(root, "tests/scenarios/slow-settle.yaml"),
+      "--pack",
+      join(root, "tests/support/slow.pack.yaml"),
+      "--backend",
+      slowArm,
+      "--record",
+      "off",
+    ]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  },
+);
+
+// At the runner's settle cap the step fails, and says why: the arm's reason
+// (the page was still changing, and how recently) is in the failure.
+test(
+  "a page still redrawing at the settle cap fails with the arm's reason",
+  { timeout: 300_000 },
+  () => {
+    const slowArm = `cmd:node ${join(root, "src/main.ts")} --binding ${join(root, "tests/support/slow-binding.ts")}`;
+    const r = run([
+      "run",
+      join(root, "tests/scenarios/slow-settle.yaml"),
+      "--pack",
+      join(root, "tests/support/slow.pack.yaml"),
+      "--backend",
+      slowArm,
+      "--record",
+      "off",
+      "--settle-cap",
+      "3000",
+    ]);
+    assert.notEqual(r.status, 0, r.stdout + r.stderr);
+    assert.match(
+      r.stdout + r.stderr,
+      /the page was still changing: it last changed \d+ ms before the wait ended/,
+    );
   },
 );

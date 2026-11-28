@@ -9,10 +9,11 @@ const binding: Binding = {
   name: "slow redraw",
   roles: {},
   async stage(ctx, use) {
-    if (use !== "launch-slow") throw new Error(`no stage procedure '${use}'`);
-    await ctx.open(
-      pathToFileURL(join(import.meta.dirname, "slow-page.html")).href,
-    );
+    if (use !== "launch-slow" && use !== "launch-slow-settle")
+      throw new Error(`no stage procedure '${use}'`);
+    const page =
+      use === "launch-slow" ? "slow-page.html" : "slow-settle-page.html";
+    await ctx.open(pathToFileURL(join(import.meta.dirname, page)).href);
   },
   async surface(ctx) {
     const text = await ctx.browser!.execute(

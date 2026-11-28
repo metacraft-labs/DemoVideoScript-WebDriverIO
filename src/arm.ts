@@ -125,6 +125,9 @@ function w3cKey(key: string): string {
 
 const BUTTONS: Record<string, 0 | 1 | 2> = { left: 0, middle: 1, right: 2 };
 
+/** A settled wait that saw the surface change this recently reports progress. */
+const PROGRESS_WINDOW_MS = 1000;
+
 const sleep = (ms: number) =>
   new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
@@ -416,16 +419,35 @@ export class Arm {
     const deadline = Date.now() + timeoutMs;
     let last = JSON.stringify(await this.binding.surface(this.ctx));
     let quiet = 0;
+    this.lastChange = 0;
     while (Date.now() < deadline) {
       await sleep(60);
       const now = JSON.stringify(await this.binding.surface(this.ctx));
       if (now === last) {
         quiet++;
         if (quiet >= 2) return true;
-      } else quiet = 0;
+      } else {
+        quiet = 0;
+        this.lastChange = Date.now();
+      }
       last = now;
     }
     return false;
+  }
+
+  /** When the surface last changed during a settled wait (epoch ms). */
+  private lastChange = 0;
+
+  /**
+   * Not settled, but still changing when the wait ended: the surface changed
+   * within the last second of it. The runner then waits on, up to its settle
+   * cap, instead of failing a page that is still drawing (a heavy redraw on a
+   * loaded host takes longer than one settle timeout).
+   */
+  private stillChanging(): boolean {
+    return (
+      this.lastChange > 0 && Date.now() - this.lastChange < PROGRESS_WINDOW_MS
+    );
   }
 
   async handle(req: any): Promise<Record<string, unknown>> {
@@ -494,8 +516,15 @@ export class Arm {
         return {};
       case "await": {
         if (this.defect === "early-sync") return { met: true };
-        if (req.condition === "settled")
-          return { met: await this.settled(req.timeoutMs) };
+        if (req.condition === "settled") {
+          if (await this.settled(req.timeoutMs)) return { met: true };
+          if (!this.stillChanging()) return { met: false };
+          return {
+            met: false,
+            progress: true,
+            reason: `the page was still changing: it last changed ${Date.now() - this.lastChange} ms before the wait ended`,
+          };
+        }
         const deadline = Date.now() + req.timeoutMs;
         for (;;) {
           const met = await this.binding.condition(this.ctx, req.condition);
@@ -608,25 +637,60 @@ class Recording {
 
   constructor(file: string) {
     this.file = file;
-    this.ff = spawn(process.env.FFMPEG_BIN ?? "ffmpeg", [
-      "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-      // no probing: the input is known, and probing would hold back the
-      // first megabytes of frames instead of encoding them as they come
-      "-probesize", "32", "-analyzeduration", "0",
-      "-f", "image2pipe", "-framerate", String(RECORDING_FPS), "-c:v", "png", "-i", "pipe:0",
-      // the fastest preset: the encoding must keep up with the screenshots
-      "-c:v", "libx264rgb", "-qp", "0", "-preset", "ultrafast", "-bf", "0", "-pix_fmt", "rgb24",
-      // a few encoder threads: x264 holds back as many frames as it has
-      // threads, and on a many-core host that kept every frame of a short
-      // recording out of the file until the stop
-      "-threads", "4",
-      // a cluster a second, written out at once: the file keeps up with the
-      // recording, and a run that dies keeps the video up to that second
-      "-flush_packets", "1", "-cluster_time_limit", "1000",
-      "-f", "matroska", file,
-    ], { stdio: ["pipe", "ignore", "pipe"] });
+    this.ff = spawn(
+      process.env.FFMPEG_BIN ?? "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-y",
+        // no probing: the input is known, and probing would hold back the
+        // first megabytes of frames instead of encoding them as they come
+        "-probesize",
+        "32",
+        "-analyzeduration",
+        "0",
+        "-f",
+        "image2pipe",
+        "-framerate",
+        String(RECORDING_FPS),
+        "-c:v",
+        "png",
+        "-i",
+        "pipe:0",
+        // the fastest preset: the encoding must keep up with the screenshots
+        "-c:v",
+        "libx264rgb",
+        "-qp",
+        "0",
+        "-preset",
+        "ultrafast",
+        "-bf",
+        "0",
+        "-pix_fmt",
+        "rgb24",
+        // a few encoder threads: x264 holds back as many frames as it has
+        // threads, and on a many-core host that kept every frame of a short
+        // recording out of the file until the stop
+        "-threads",
+        "4",
+        // a cluster a second, written out at once: the file keeps up with the
+        // recording, and a run that dies keeps the video up to that second
+        "-flush_packets",
+        "1",
+        "-cluster_time_limit",
+        "1000",
+        "-f",
+        "matroska",
+        file,
+      ],
+      { stdio: ["pipe", "ignore", "pipe"] },
+    );
     this.ff.stderr?.on("data", (d) => (this.stderr += String(d)));
-    this.exited = new Promise((resolve) => this.ff.on("close", (code) => resolve(code)));
+    this.exited = new Promise((resolve) =>
+      this.ff.on("close", (code) => resolve(code)),
+    );
     this.ff.on("error", (e) => (this.broken = String(e)));
     this.ff.stdin?.on("error", (e) => (this.broken ||= String(e)));
   }
@@ -640,7 +704,9 @@ class Recording {
 
   private fill(at: number, inclusive = false): void {
     if (!this.last || this.broken) return;
-    const slot = Math.floor(((at - this.startedAt) * RECORDING_FPS) / 1000) + (inclusive ? 1 : 0);
+    const slot =
+      Math.floor(((at - this.startedAt) * RECORDING_FPS) / 1000) +
+      (inclusive ? 1 : 0);
     while (this.written < slot) {
       this.ff.stdin!.write(this.last);
       this.written++;
@@ -657,8 +723,10 @@ class Recording {
       return [];
     }
     if (code !== 0 || this.broken)
-      throw new BackendError("internal",
-        `encoding the video: ${this.broken || `ffmpeg exited ${code}`} ${this.stderr.trim()}`);
+      throw new BackendError(
+        "internal",
+        `encoding the video: ${this.broken || `ffmpeg exited ${code}`} ${this.stderr.trim()}`,
+      );
     return [this.file];
   }
 
