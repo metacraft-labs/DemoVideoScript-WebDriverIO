@@ -100,7 +100,7 @@ rl.on("close", () => {
   queue.then(() => arm.close()).then(() => process.exit(0));
 });
 // What the arm started does not outlive it. WebDriverIO starts ChromeDriver
-// as a DETACHED child, and a binding may start more (an editor, a server):
+// as a DETACHED child, and a binding may start more (an application, a server):
 // ending the WebDriver session does not always stop them (a session that
 // could not be ended, a driver whose browser hangs), and a detached child
 // whose parent exits is reparented and keeps running, with its browser, for

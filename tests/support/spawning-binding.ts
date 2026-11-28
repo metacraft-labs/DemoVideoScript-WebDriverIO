@@ -1,5 +1,5 @@
 // A binding whose stage starts a detached child process, as WebDriverIO starts
-// ChromeDriver and as a binding may start an editor or a server, and writes
+// ChromeDriver and as a binding may start an application or a server, and writes
 // its pid to $DVS_TEST_CHILD_PID_FILE. The child is a real process (`sleep`);
 // no browser is needed to show whether the arm leaves it running.
 import { spawn } from "node:child_process";
