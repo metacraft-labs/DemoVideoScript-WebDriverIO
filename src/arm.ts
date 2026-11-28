@@ -17,10 +17,10 @@
 // session directly. Every action is performed without
 // WebDriverIO's automatic release, which would also lift the modifiers a
 // scenario holds.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { BackendError, hit, readNode, SurfaceIndex } from "./surface.ts";
 import type { SurfaceNode } from "./surface.ts";
 import type { Locator } from "./protocol.ts";
@@ -142,15 +142,7 @@ export class Arm {
   private stageClosed = false;
   private held = new Set<string>();
   private buttonDown: 0 | 1 | 2 | undefined;
-  private recording:
-    | {
-        dir: string;
-        frames: string;
-        times: number[];
-        running: boolean;
-        loop: Promise<void>;
-      }
-    | undefined;
+  private recording: Recording | undefined;
   readonly ctx: ArmContext;
   private binding: Binding;
   private defect: Defect;
@@ -531,34 +523,23 @@ export class Arm {
   }
 
   // --- recordings: WebDriver has no video, so the arm screenshots the page
-  // while it records and encodes the frames with ffmpeg, each shown for as
-  // long as it was on screen.
+  // while it records and hands each frame to ffmpeg as it is taken, shown for
+  // as long as it was on screen. The encoding keeps up with the recording, so
+  // stopping only finishes the file: a run of any length stops within the
+  // runner's limit for the call (encoding the whole run at the stop did not,
+  // once a run was long enough).
   private async record(req: any): Promise<{ files: string[] }> {
     switch (req.op) {
       case "start": {
         this.browser();
-        const frames = mkdtempSync(join(tmpdir(), "dvs-wd-frames-"));
-        const rec = {
-          dir: req.dir as string,
-          frames,
-          times: [] as number[],
-          running: true,
-          loop: Promise.resolve(),
-        };
+        mkdirSync(req.dir, { recursive: true });
+        const rec = new Recording(join(req.dir, "session.mkv"));
         rec.loop = (async () => {
           while (rec.running) {
             const t = Date.now();
             try {
               const png = await this.browser().takeScreenshot();
-              writeFileSync(
-                join(
-                  frames,
-                  `${String(rec.times.length).padStart(6, "0")}.png`,
-                ),
-                png,
-                "base64",
-              );
-              rec.times.push(t);
+              rec.frame(Buffer.from(png, "base64"), t);
             } catch {
               // the page navigated or closed mid-shot: the next frame covers it
             }
@@ -582,61 +563,7 @@ export class Arm {
         if (!rec) return { files: [] };
         rec.running = false;
         await rec.loop;
-        try {
-          if (rec.times.length === 0) return { files: [] };
-          mkdirSync(rec.dir, { recursive: true });
-          const list = rec.times.map((t, i) => {
-            const next = rec.times[i + 1] ?? Date.now();
-            return `file '${join(rec.frames, `${String(i).padStart(6, "0")}.png`)}'\nduration ${((next - t) / 1000).toFixed(3)}`;
-          });
-          // the concat demuxer needs the last file once more to honour its duration
-          list.push(
-            `file '${join(rec.frames, `${String(rec.times.length - 1).padStart(6, "0")}.png`)}'`,
-          );
-          writeFileSync(join(rec.frames, "list.txt"), list.join("\n") + "\n");
-          // Lossless (H.264 RGB, qp 0, in Matroska): the recording is the
-          // source of a video, not the video, so the composition's one final
-          // encode is the only lossy one (DemoVideoScript-pm
-          // spec/Codec-Study.md). RGB needs no even size: nothing is padded.
-          const out = join(rec.dir, "session.mkv");
-          const ff = spawnSync(
-            process.env.FFMPEG_BIN ?? "ffmpeg",
-            [
-              "-hide_banner",
-              "-loglevel",
-              "error",
-              "-y",
-              "-f",
-              "concat",
-              "-safe",
-              "0",
-              "-i",
-              join(rec.frames, "list.txt"),
-              "-c:v",
-              "libx264rgb",
-              "-qp",
-              "0",
-              // the fastest preset: an hour of a run's screenshots must be
-              // encoded before the runner's call ends
-              "-preset",
-              "ultrafast",
-              "-pix_fmt",
-              "rgb24",
-              "-r",
-              "10",
-              out,
-            ],
-            { encoding: "utf8" },
-          );
-          if (ff.status !== 0)
-            throw new BackendError(
-              "internal",
-              `encoding the video: ${ff.stderr}`,
-            );
-          return { files: [out] };
-        } finally {
-          rmSync(rec.frames, { recursive: true, force: true });
-        }
+        return { files: await rec.finish() };
       }
     }
     throw new BackendError("protocol", `unknown record op '${req.op}'`);
@@ -646,12 +573,98 @@ export class Arm {
     if (this.recording) {
       this.recording.running = false;
       await this.recording.loop.catch(() => {});
-      rmSync(this.recording.frames, { recursive: true, force: true });
+      await this.recording.abandon();
       this.recording = undefined;
     }
     const b = this.ctx.browser;
     this.ctx.browser = undefined;
     await b?.deleteSession().catch(() => {});
     await this.binding.close?.(this.ctx).catch(() => {});
+  }
+}
+
+/** Frames per second of a recording: a screenshot is taken every 200 ms at most, repeated to fill. */
+const RECORDING_FPS = 10;
+
+/**
+ * One recording: screenshots streamed into ffmpeg as they are taken, at a
+ * constant frame rate on the wall clock. Lossless (H.264 RGB, qp 0, in
+ * Matroska): the recording is the source of a video, not the video, so the
+ * composition's one final encode is the only lossy one (DemoVideoScript-pm
+ * spec/Codec-Study.md). RGB needs no even size: nothing is padded.
+ */
+class Recording {
+  running = true;
+  loop: Promise<void> = Promise.resolve();
+  private readonly ff: ChildProcess;
+  private readonly exited: Promise<number | null>;
+  private stderr = "";
+  private broken = "";
+  private startedAt = 0;
+  private last: Buffer | undefined;
+  private written = 0;
+
+  readonly file: string;
+
+  constructor(file: string) {
+    this.file = file;
+    this.ff = spawn(process.env.FFMPEG_BIN ?? "ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+      // no probing: the input is known, and probing would hold back the
+      // first megabytes of frames instead of encoding them as they come
+      "-probesize", "32", "-analyzeduration", "0",
+      "-f", "image2pipe", "-framerate", String(RECORDING_FPS), "-c:v", "png", "-i", "pipe:0",
+      // the fastest preset: the encoding must keep up with the screenshots
+      "-c:v", "libx264rgb", "-qp", "0", "-preset", "ultrafast", "-bf", "0", "-pix_fmt", "rgb24",
+      // a few encoder threads: x264 holds back as many frames as it has
+      // threads, and on a many-core host that kept every frame of a short
+      // recording out of the file until the stop
+      "-threads", "4",
+      // a cluster a second, written out at once: the file keeps up with the
+      // recording, and a run that dies keeps the video up to that second
+      "-flush_packets", "1", "-cluster_time_limit", "1000",
+      "-f", "matroska", file,
+    ], { stdio: ["pipe", "ignore", "pipe"] });
+    this.ff.stderr?.on("data", (d) => (this.stderr += String(d)));
+    this.exited = new Promise((resolve) => this.ff.on("close", (code) => resolve(code)));
+    this.ff.on("error", (e) => (this.broken = String(e)));
+    this.ff.stdin?.on("error", (e) => (this.broken ||= String(e)));
+  }
+
+  /** The screenshot taken at `at` (epoch ms): the previous one fills the time up to it. */
+  frame(png: Buffer, at: number): void {
+    if (!this.last) this.startedAt = at;
+    this.fill(at);
+    this.last = png;
+  }
+
+  private fill(at: number, inclusive = false): void {
+    if (!this.last || this.broken) return;
+    const slot = Math.floor(((at - this.startedAt) * RECORDING_FPS) / 1000) + (inclusive ? 1 : 0);
+    while (this.written < slot) {
+      this.ff.stdin!.write(this.last);
+      this.written++;
+    }
+  }
+
+  /** Ends the video now and finishes the file; no file when no frame was taken. */
+  async finish(): Promise<string[]> {
+    this.fill(Date.now(), true);
+    this.ff.stdin!.end();
+    const code = await this.exited;
+    if (this.written === 0) {
+      rmSync(this.file, { force: true });
+      return [];
+    }
+    if (code !== 0 || this.broken)
+      throw new BackendError("internal",
+        `encoding the video: ${this.broken || `ffmpeg exited ${code}`} ${this.stderr.trim()}`);
+    return [this.file];
+  }
+
+  async abandon(): Promise<void> {
+    this.ff.stdin?.end();
+    this.ff.kill("SIGKILL");
+    await this.exited;
   }
 }

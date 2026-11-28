@@ -3,7 +3,8 @@
 // (hit), settle detection, and the generated protocol types. No stand-ins.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createInterface } from "node:readline";
 import {
   existsSync,
   mkdtempSync,
@@ -225,6 +226,63 @@ test(
       assert.notEqual(r.status, 0);
       assert.match(r.stderr, /stale/);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+// The arm on its own, over its protocol: a recording is encoded while it
+// runs, so stopping it only finishes the file. When the whole run's
+// screenshots were encoded at the stop, a long run's stop outlasted the
+// runner's limit for the call and the video was cut short.
+test(
+  "a recording is encoded while it runs, and the video is as long as the recording",
+  { timeout: 300_000 },
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dvs-wd-stream-"));
+    const p = spawn("node", [join(root, "src/main.ts"), "--binding", join(root, "conformance/notes-binding.ts")],
+      { stdio: ["pipe", "pipe", "inherit"] });
+    const replies = new Map<number, (r: any) => void>();
+    createInterface({ input: p.stdout! }).on("line", (l) => {
+      const r = JSON.parse(l);
+      replies.get(r.id)?.(r);
+    });
+    let id = 0;
+    const call = (req: Record<string, unknown>): Promise<any> =>
+      new Promise((resolve, reject) => {
+        const n = ++id;
+        replies.set(n, (r) => (r.ok ? resolve(r) : reject(new Error(JSON.stringify(r.error)))));
+        p.stdin!.write(JSON.stringify({ ...req, id: n }) + "\n");
+      });
+    try {
+      await call({ call: "hello" });
+      await call({ call: "stage", use: "seed-notes",
+        with: { fixture: join(dvsRoot, "conformance/fixtures/three-notes.json") } });
+      await call({ call: "stage", use: "launch-app", with: {} });
+      await call({ call: "record", op: "start", dir });
+      const started = Date.now();
+      await new Promise((r) => setTimeout(r, 8_000));
+      // the frames so far are in the file already
+      const video = join(dir, "session.mkv");
+      assert.ok(existsSync(video) && statSync(video).size > 1_000, "nothing encoded while recording");
+      const stopping = Date.now();
+      const stop = await call({ call: "record", op: "stop", dir });
+      assert.deepEqual(stop.files, [video]);
+      const probe = spawnSync(
+        (process.env.FFMPEG_BIN ?? "ffmpeg").replace(/ffmpeg$/, "ffprobe"),
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,pix_fmt:format=duration",
+          "-of", "csv=p=0", video],
+        { encoding: "utf8" },
+      );
+      const [stream, duration] = probe.stdout.trim().split("\n");
+      assert.equal(stream, "h264,gbrp");
+      // as long as the recording, give or take its first screenshot and a frame
+      const ms = Number(duration) * 1000;
+      const wall = stopping - started;
+      assert.ok(ms >= wall - 1_000 && ms <= wall + 1_000, `the video is ${ms} ms, the recording ${wall} ms`);
+      await call({ call: "shutdown" });
+    } finally {
+      p.kill();
       rmSync(dir, { recursive: true, force: true });
     }
   },
